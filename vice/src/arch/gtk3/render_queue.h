@@ -29,17 +29,13 @@
 
 #include "vice.h"
 
-#if !defined(MACOS_COMPILE) || defined(USE_MACOS_PACING)
 /*
- * The DirectX renderer and the OpenGL renderer on X11 (and on macOS with
- * configure --enable-macos-pacing) pace presents with VSync on: frames wait a few ms for their turn while the emulator, driven by
+ * The DirectX and OpenGL renderers pace presents with VSync on: frames wait
+ * a few ms for their turn while the emulator, driven by
  * the audio device, may already deliver the next ones in a burst. Room for
  * those, or they would be dropped.
  */
 #define RENDER_QUEUE_MAX_BACKBUFFERS 4
-#else
-#define RENDER_QUEUE_MAX_BACKBUFFERS 2
-#endif
 
 #include <stdbool.h>
 
