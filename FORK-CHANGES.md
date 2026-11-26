@@ -67,14 +67,51 @@ driver delivers frames more evenly than `dx`, so it needs less latency.
 **Linux (and other X11 systems), new and less tested:** the frame pacing and
 frame doubling now also exist in the OpenGL renderer
 (`src/arch/gtk3/opengl_pacing.c/.h`, used by `opengl_renderer.c`; the render
-queue has 4 backbuffers on all platforms except macOS). It is the same
+queue has 4 backbuffers, on macOS only with `--enable-macos-pacing`). It is the same
 method as on Windows, with POSIX timers; the display refresh rate comes from
 GTK. Built and run under WSL (WSLg, 60 Hz, no real VSync): presents were
 spread by ±0.18 ms instead of ±5.8 ms without pacing, for about 9 ms more
 latency. Not yet tried on a real Linux desktop or with VRR there, so it
 should work on Linux now, but isn't confirmed. VRR on Linux usually needs
 fullscreen and driver/compositor support. CRT beam simulation is still
-Windows only, and macOS is unchanged.
+Windows only.
+
+**macOS, optional:** `./configure --enable-gtk3ui --enable-macos-pacing`
+(defines `USE_MACOS_PACING`, default off) builds the same pacing and
+doubling into the macOS OpenGL renderer (`opengl_renderer_macos.m`). The
+wait is `mach_wait_until()` without spinning, as Apple asks of real-time
+threads ([TN2169](https://developer.apple.com/library/archive/technotes/tn2169/_index.html));
+the refresh rate is `NSScreen.maximumFramesPerSecond` (macOS 12+). Without
+the option the macOS renderer behaves as before (2 backbuffers, frames
+presented as they arrive).
+
+**Present stats, all OpenGL builds:** with `VICE_PRESENT_STATS=<file>` set,
+every present is logged to `<file>` as CSV and a 5 s summary goes to the
+VICE log; `src/arch/gtk3/present_stats.py <file> [<file> ...]` prints the
+interval statistics and a histogram:
+
+    VICE_PRESENT_STATS=paced.csv x64sc -VICIIvsync -autostart scroll.prg
+    python3 src/arch/gtk3/present_stats.py --display-hz 144 paced.csv
+
+Measured on an M5 Pro MacBook Pro with a 144 Hz external display (fixed
+refresh, Adaptive-Sync off), windowed, a PAL program scrolling every frame,
+three 60 s runs of each build:
+
+| | default | `--enable-macos-pacing` |
+|---|---|---|
+| present call interval, p1-p99 | 18.9-20.9 ms | 19.94-19.99 ms |
+| present return interval, sd | 0.70-1.02 ms | 1.03-1.16 ms |
+| latency (frame done to present), mean | 1.0-1.2 ms | 3.0-4.3 ms |
+
+(One paced run hit 5 s of background load and is left out: spread
+13.9-25.6 ms.) Pacing makes the present calls regular, but `flushBuffer`
+plus `glFinish` take 0.1-4 ms each, so the time the present returns is no
+steadier, and on a fixed 144 Hz display a 50 Hz frame can only be shown for
+2 or 3 refreshes either way. The benefit expected on Windows, steady frames
+on a VRR display, is not measured on macOS: Adaptive-Sync needs macOS 12,
+Apple silicon and "Variable" refresh in System Settings > Displays
+([Apple](https://support.apple.com/en-us/102144)), and NSOpenGL gives no
+feedback of when a frame reached the screen.
 
 ---
 
