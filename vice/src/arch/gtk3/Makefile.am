@@ -133,7 +133,7 @@ libarch_a_SOURCES += directx_renderer.c directx_renderer_impl.cc
 else
 libarch_a_SOURCES += opengl_renderer.c opengl_pacing.c opengl_present_stats.c
 if MACOS_COMPILE
-libarch_a_SOURCES += opengl_renderer_macos.m
+libarch_a_SOURCES += metal_renderer_macos.m opengl_renderer_macos.m
 else
 libarch_a_SOURCES += opengl_renderer_unix.c
 endif
@@ -147,6 +147,13 @@ libtoolarch_a_SOURCES += debug_gtk3.c
 endif
 
 EXTRA_DIST = \
+	tests/Makefile \
+	tests/metal_pixels.m \
+	tests/metal_fallback.ts \
+	tests/pacing_sim.c \
+	tests/pacing_drift.py \
+	tests/pacing.expected.diff \
+	tests/present_stats_test.py \
 	Resources/VICE.icns \
 	actions-cartridge.h \
 	actions-clipboard.h \
@@ -176,6 +183,7 @@ EXTRA_DIST = \
 	make-bindist_win32.sh \
 	mousedrv.h \
 	opengl_renderer.h \
+	metal_renderer.h \
 	opengl_pacing.h \
 	opengl_present_stats.h \
 	present_stats.py \

@@ -58,6 +58,7 @@ typedef struct vice_render_queue_s {
 
     /** Allows discarding of late buffer returns */
     unsigned int backbuffer_generation;
+    uint64_t sequence;
 } render_queue_t;
 
 static void free_backbuffer(backbuffer_t *backbuffer) {
@@ -157,6 +158,7 @@ void render_queue_enqueue_for_display(void *render_queue, backbuffer_t *backbuff
     LOCK();
 
     assert(rq->render_queue_length < RENDER_QUEUE_MAX_BACKBUFFERS);
+    backbuffer->sequence = ++rq->sequence;
 
     rq->render_queue[(rq->render_queue_next + rq->render_queue_length) % RENDER_QUEUE_MAX_BACKBUFFERS] = backbuffer;
     rq->render_queue_length++;

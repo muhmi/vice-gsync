@@ -31,6 +31,7 @@
 #include "vice.h"
 
 #include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -160,12 +161,13 @@ void opengl_present_stats_record(opengl_present_stats_t *stats,
 
             log_message(LOG_DEFAULT,
                         "OpenGL present stats: %u frames, interval mean %.3f sd %.3f min %.3f max %.3f ms,"
-                        " late %u, bunched %u, repeats %u, redraws %u, dropped %u, latency mean %.2f max %.2f ms",
+                         " late %u, bunched %u, repeats %u, redraws %u, dropped %u, latency mean %.2f max %.2f ms,"
+                         " new interval/nominal %.6f (nominal %.6f ms)",
                         stats->frames, mean, var > 0.0 ? sqrt(var) : 0.0,
                         stats->interval_min, stats->interval_max,
                         stats->late, stats->bunched, stats->repeats, stats->redraws,
                         dropped - stats->dropped_start,
-                        stats->latency_sum / stats->frames, stats->latency_max);
+                         stats->latency_sum / stats->frames, stats->latency_max, mean / nominal, nominal);
         }
         fflush(stats->file);
         stats_reset(stats, done_ms, dropped);

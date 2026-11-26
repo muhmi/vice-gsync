@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Summarise VICE_PRESENT_STATS logs of the GTK3 OpenGL renderer.
+"""Summarise VICE_PRESENT_STATS logs of the GTK3 GL and Metal renderers.
 
 Usage: present_stats.py [--skip SECONDS] [--display-hz HZ] LOG [LOG ...]
 """
@@ -29,12 +29,36 @@ def sd_of(values):
     return math.sqrt(sum((v - mean) ** 2 for v in values) / len(values))
 
 
-def summarise(path, rows, display_hz):
+def new_intervals(rows, column):
+    previous = None
+    result = []
+    for row in rows:
+        if row["kind"] == "D":
+            previous = None
+        elif row["kind"] == "N":
+            now = float(row[column])
+            if now <= 0:
+                continue
+            if previous is not None:
+                result.append(now - previous)
+            previous = now
+    return result
+
+
+def realtime_ratio(rows, column):
+    intervals = new_intervals(rows, column)
+    if not intervals:
+        raise ValueError("fewer than two measured new frames")
+    hz = float(next(r["emulated_hz"] for r in reversed(rows) if r["kind"] == "N"))
+    return sum(intervals) / len(intervals) * hz / 1000.0
+
+
+def summarise(path, rows, display_hz, max_interval_ratio=None):
     new = [r for r in rows if r["kind"] == "N"]
     hz = float(new[-1]["emulated_hz"]) if new else 0.0
     nominal = 1000.0 / hz if hz > 1.0 else 20.0
     done = [float(r["done_ms"]) for r in new]
-    intervals = [b - a for a, b in zip(done, done[1:])]
+    intervals = new_intervals(rows, "done_ms")
     if not intervals:
         sys.exit(f"{path}: fewer than two new frames")
     ready = [float(r["ready_ms"]) for r in new]
@@ -55,14 +79,14 @@ def summarise(path, rows, display_hz):
           f"p1 {percentile(intervals, 1):.3f} p99 {percentile(intervals, 99):.3f} max {max(intervals):.3f}")
     print(f"new-frame present call interval ms: sd {sd_of(calls):.3f} p1 {percentile(calls, 1):.3f} "
           f"p99 {percentile(calls, 99):.3f}")
-    print(f"present + glFinish ms: mean {sum(present) / len(present):.3f} "
+    print(f"present call->return ms: mean {sum(present) / len(present):.3f} "
           f"p99 {percentile(present, 99):.3f} max {max(present):.3f}")
     print(f"late (>1.5 frames) {sum(i > nominal * 1.5 for i in intervals)}, "
           f"bunched (<0.5 frames) {sum(i < nominal * 0.5 for i in intervals)}")
-    print(f"latency completed->presented ms: mean {sum(latency) / len(latency):.2f} "
+    print(f"latency completed->present return ms: mean {sum(latency) / len(latency):.2f} "
           f"p99 {percentile(latency, 99):.2f} max {max(latency):.2f}")
     if wake:
-        print(f"paced presents {len(paced)}, wake error ms: mean {sum(wake) / len(wake):.3f} "
+        print(f"paced presents {len(paced)}, call minus target ms: mean {sum(wake) / len(wake):.3f} "
               f"p99 {percentile(wake, 99):.3f} max {max(wake):.3f}")
 
     print("interval histogram (1 ms bins):")
@@ -82,7 +106,32 @@ def summarise(path, rows, display_hz):
             counts[k] = counts.get(k, 0) + 1
         shown = ", ".join(f"{k}: {counts[k]}" for k in sorted(counts))
         print(f"interval in {display_hz:g} Hz refreshes ({refresh:.3f} ms): {shown}")
+    column = "done_ms"
+    coverage = True
+    if "presented_ms" in rows[0]:
+        column = "presented_ms"
+        positive = [r for r in rows if r["status"] == "presented" and float(r["presented_ms"]) > 0]
+        coverage = len(positive) == len(rows)
+        print(f"Metal actual presentation coverage: {len(positive)}/{len(rows)}")
+        for status in sorted({r["status"] for r in rows}):
+            print(f"  {status}: {sum(r['status'] == status for r in rows)}")
+        actual = new_intervals(rows, column)
+        if actual:
+            print(f"actual new-frame interval ms: mean {sum(actual) / len(actual):.6f} "
+                  f"sd {sd_of(actual):.6f} late {sum(i > nominal * 1.5 for i in actual)}")
+            latency = [float(r[column]) - float(r["completed_ms"]) for r in positive if r["kind"] == "N"]
+            print(f"actual completed->presented latency ms: mean {sum(latency) / len(latency):.6f}")
+    try:
+        ratio = realtime_ratio(rows, column)
+    except ValueError as error:
+        print(f"real-time: FAIL ({error})")
+        return False
+    print(f"new-frame mean interval/nominal: {ratio:.9f}; nominal/mean: {1 / ratio:.9f}")
+    passed = coverage and (max_interval_ratio is None or ratio <= max_interval_ratio)
+    if max_interval_ratio is not None:
+        print(f"real-time: {'PASS' if passed else 'FAIL'} (maximum ratio {max_interval_ratio:.9f})")
     print()
+    return passed
 
 
 def main():
@@ -92,10 +141,14 @@ def main():
     parser.add_argument("--display-hz", type=float, default=0.0,
                         help="also count intervals in refreshes of a display at this rate")
     parser.add_argument("logs", nargs="+")
+    parser.add_argument("--max-interval-ratio", type=float,
+                        help="fail above this mean new-frame interval / nominal ratio; derive from GL controls")
     args = parser.parse_args()
+    passed = True
     for path in args.logs:
-        summarise(path, load(path, args.skip), args.display_hz)
+        passed = summarise(path, load(path, args.skip), args.display_hz, args.max_interval_ratio) and passed
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

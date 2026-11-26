@@ -76,8 +76,36 @@ should work on Linux now, but isn't confirmed. VRR on Linux usually needs
 fullscreen and driver/compositor support. CRT beam simulation is still
 Windows only.
 
-**macOS:** `./configure --enable-gtk3ui` builds the same pacing and doubling
-into the macOS OpenGL renderer (`opengl_renderer_macos.m`), always included
+**macOS:** `./configure --enable-gtk3ui` selects the native Metal renderer
+(`vice/src/arch/gtk3/metal_renderer_macos.m`) by default, without a backend
+configure option. CPU palette and video-filter rendering feed an RGBA8 nearest
+pipeline loaded from the installed `Metal/nearest.metal` resource. Aspect,
+mirroring, clockwise rotation and backing-pixel layout are per canvas. Metal
+scaling is nearest-neighbor; GL's bicubic and interlaced scaler paths are not
+Metal shader modes.
+
+Metal initialization checks the device, command queue, bundled shader and
+pipelines. Any initialization failure selects the existing OpenGL backend and
+logs one line naming the failure and that OpenGL is used. GL/GLEW remain build
+dependencies. A nil drawable is transient unavailability, not a fallback
+trigger. GPU-owned uploads and callback-owned submission records outlive CPU
+backbuffer reuse and canvas teardown.
+
+The four-buffer FIFO assigns monotonically increasing frame IDs. Metal uses
+the same `opengl_pacing.c` scheduler as GL, with explicit clock, nominal period
+and queue capacity; GPU readiness returns to the worker with that submission's
+planned, completion and draw times. Timed whole-frame presents use Mach host
+seconds; no progressive frames are blended. Metal does not double frames.
+
+`VICE_PRESENT_STATS=<file>` writes Metal CSVs to `<file>.canvas<N>.csv`, with
+frame/present IDs, GPU completion, actual `presentedTime` and explicit
+unavailable, unpresented or unresolved statuses. Positive actual timestamps
+are distinct from submit returns. The analyzer prints actual coverage and
+mean new-frame interval divided by nominal; `--max-interval-ratio` makes that
+comparison an acceptance check. Repeats do not count as new content and redraws
+reset interval tracking.
+
+**macOS OpenGL fallback/reference:** pacing and doubling are always included,
 as on Windows DirectX and X11, with 4 backbuffers and no configure option.
 Pacing and doubling run with VSync on, outside warp mode. The
 wait is `mach_wait_until()` without spinning, as Apple asks of real-time
@@ -126,12 +154,21 @@ low-framerate compensation and actual motion smoothness remain unmeasured.
 
 Display rate selects doubling, not emulation speed:
 `opengl_pacing_schedule()` uses `vsync_get_refresh_frequency()` (the machine
-rate) and completed-frame timestamps. `vsync_set_machine_parameter()` and
+rate, supplied by its caller) and completed-frame timestamps. `vsync_set_machine_parameter()` and
 `vsync_do_end_of_line()` in `src/vsync.c` keep emulated cycles and audio
 timing independent of the display. Completed-frame rates are
 50.113–50.114 Hz in the fixed-rate data and 50.113–50.114 Hz with Variable
 refresh, with the same 48 kHz CoreAudio configuration. The status-bar FPS
 and audible output were not independently captured.
+
+Native GPU pixel/lifetime tests and the plain-C scheduler simulation run with
+`SDKROOT="$(xcrun --show-sdk-path)" make -C vice/src/arch/gtk3/tests OUT="$(tmx artifact path evidence metal-tests)" metal`.
+The `check` target runs the off-platform simulation, DX/GL expected-diff check
+and real-time analyzer regressions. A fork build compiled with
+`CFLAGS=-DVICE_RENDERER_TEST OBJCFLAGS=-DVICE_RENDERER_TEST` supports
+`bun vice/src/arch/gtk3/tests/metal_fallback.ts <binary> <installed-data>`:
+each injected initialization failure must select GL and pass exact RGBA
+readback through the existing GL upload/draw functions.
 
 ---
 

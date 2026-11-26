@@ -1263,6 +1263,7 @@ if test x"$check_gtk3" = "xyes"; then
 
     dnl enforce OpenGL/GLEW usability unless explicitly disabled
     if test x"$is_unix_macosx" = "xyes"; then
+      LIBS="$LIBS -framework Metal -framework QuartzCore -framework Cocoa"
       AC_MSG_CHECKING(whether we can use the OpenGL Framework)
       old_LIBS="$LIBS"
       LIBS="$LIBS -framework OpenGL"
@@ -3571,6 +3572,7 @@ AC_OUTPUT([Makefile
            data/VIC20/Makefile
            data/common/Makefile
            data/GLSL/Makefile
+           data/Metal/Makefile
            data/hotkeys/Makefile
            data/joymaps/Makefile
            doc/Makefile

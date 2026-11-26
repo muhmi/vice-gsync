@@ -723,6 +723,8 @@ if [ "$UI_TYPE" = "GTK3" ]; then
 
   # --- copy GLSL shaders ---
   mkdir -p "$APP_GLSL"
+  mkdir -p "$APP_SHARE/vice/Metal"
+  cp "$TOP_DIR/data/Metal/nearest.metal" "$APP_SHARE/vice/Metal/"
   for shader in $(find "$TOP_DIR/data/GLSL/" -type f -name '*.vert' -or -name '*.frag'); do
     cp "$shader" "$APP_GLSL/"
   done
