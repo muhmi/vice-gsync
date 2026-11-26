@@ -4,8 +4,7 @@
  * With VSync on, presents follow a steady clock at the emulated frame rate
  * instead of the bursty, audio-driven frame delivery of the emulator. This is
  * the same method as the Windows DirectX renderer uses (see
- * directx_renderer_impl.cc), with POSIX timing, or Mach timing on macOS
- * (configure --enable-macos-pacing).
+ * directx_renderer_impl.cc), with POSIX timing, or Mach timing on macOS.
  */
 
 /*

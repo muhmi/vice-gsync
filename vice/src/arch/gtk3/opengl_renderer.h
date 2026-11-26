@@ -36,10 +36,8 @@
 #include <GL/glxew.h>
 #endif
 
-#if !defined(MACOS_COMPILE) || defined(USE_MACOS_PACING)
 /** \brief Frame pacing and frame doubling with VSync on (see opengl_pacing.c) */
 #define OPENGL_PACING
-#endif
 
 #include "opengl_pacing.h"
 #include "opengl_present_stats.h"
