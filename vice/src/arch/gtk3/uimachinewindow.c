@@ -51,6 +51,9 @@
 #ifdef WINDOWS_COMPILE
 #include "directx_renderer.h"
 #include "directx_renderer_impl.h"
+#elif defined(MACOS_COMPILE)
+#include "metal_renderer.h"
+#include "opengl_renderer.h"
 #else
 #include "opengl_renderer.h"
 #endif
@@ -334,6 +337,13 @@ static gboolean event_box_motion_cb(GtkWidget *widget,
 #ifdef WINDOWS_COMPILE
     vice_directx_renderer_context_t *context = (vice_directx_renderer_context_t *)canvas->renderer_context;
     double render_w = context->bitmap_width;
+    if (canvas->videoconfig->double_size_enabled) {
+        render_w /= 2.0f;
+    }
+#elif defined(MACOS_COMPILE)
+    double render_w = canvas->renderer_backend == &vice_metal_backend ?
+        vice_metal_frame_width(canvas) :
+        ((vice_opengl_renderer_context_t *)canvas->renderer_context)->current_frame_width;
     if (canvas->videoconfig->double_size_enabled) {
         render_w /= 2.0f;
     }
@@ -671,13 +681,13 @@ static void machine_window_create(video_canvas_t *canvas)
 #ifdef WINDOWS_COMPILE
     canvas->renderer_backend = &vice_directx_backend;
     backend_label = "DirectX";
+#elif defined(MACOS_COMPILE)
+    canvas->renderer_backend = &vice_metal_backend;
+    backend_label = "Metal";
 #else
     canvas->renderer_backend = &vice_opengl_backend;
     backend_label = "OpenGL";
 #endif
-
-    log_message(machine_window_log, "Chip '%s' using GTK3 backend '%s'.",
-                canvas->videoconfig->chip_name , backend_label);
 
     new_event_box = gtk_event_box_new();
 
@@ -686,6 +696,11 @@ static void machine_window_create(video_canvas_t *canvas)
 
     canvas->event_box = new_event_box;
     canvas->renderer_backend->initialise(canvas);
+#ifdef MACOS_COMPILE
+    backend_label = canvas->renderer_backend == &vice_metal_backend ? "Metal" : "OpenGL";
+#endif
+    log_message(machine_window_log, "Chip '%s' using GTK3 backend '%s'.",
+                canvas->videoconfig->chip_name, backend_label);
 
     gtk_widget_add_events(new_event_box, GDK_POINTER_MOTION_MASK);
     gtk_widget_add_events(new_event_box, GDK_BUTTON_PRESS_MASK);

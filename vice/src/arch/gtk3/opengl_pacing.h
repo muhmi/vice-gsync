@@ -87,8 +87,10 @@ typedef struct opengl_pacing_s {
 double opengl_pacing_now_ms(void);
 void   opengl_pacing_init(opengl_pacing_t *pacing);
 void   opengl_pacing_stop(opengl_pacing_t *pacing);
-double opengl_pacing_schedule(opengl_pacing_t *pacing, double completed_ms, unsigned int queued);
-void   opengl_pacing_ready(opengl_pacing_t *pacing);
+double opengl_pacing_schedule(opengl_pacing_t *pacing, double completed_ms, unsigned int queued,
+                             double now_ms, double nominal_ms, unsigned int capacity);
+void   opengl_pacing_ready(opengl_pacing_t *pacing, double planned_ms,
+                          double completed_ms, double draw_ms);
 bool   opengl_pacing_should_double(opengl_pacing_t *pacing);
 void   opengl_pacing_wait_until(double target_ms);
 void   opengl_pacing_thread_init(void);

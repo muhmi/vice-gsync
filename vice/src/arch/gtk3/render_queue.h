@@ -38,6 +38,7 @@
 #define RENDER_QUEUE_MAX_BACKBUFFERS 4
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     bool interlaced;
@@ -48,6 +49,7 @@ typedef struct {
     unsigned int height;
     float pixel_aspect_ratio;
     double completed_time_ms;   /**< when the emulator finished the frame (renderer clock, used for frame pacing) */
+    uint64_t sequence;
 } backbuffer_t;
 
 void *render_queue_create(void);

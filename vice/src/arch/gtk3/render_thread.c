@@ -106,10 +106,15 @@ void render_thread_initiate_shutdown(render_thread_t thread)
 
 void render_thread_join(render_thread_t thread)
 {
+    LOCK();
+    if (thread->is_shut_down) {
+        UNLOCK();
+        return;
+    }
+    UNLOCK();
     log_verbose(render_log, "Joining render thread %d ...", thread->index);
 
-    /* TODO: We should block until all jobs are done - but there's a race condition deadlock outcome here. Fix needed */
-    g_thread_pool_free(thread->executor, TRUE, TRUE);
+    g_thread_pool_free(thread->executor, FALSE, TRUE);
 
     LOCK();
     thread->is_shut_down = true;

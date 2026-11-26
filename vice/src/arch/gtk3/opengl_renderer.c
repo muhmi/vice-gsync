@@ -757,6 +757,55 @@ static void modern_render(video_canvas_t *canvas, float scale_x, float scale_y)
     glUseProgram(0);
 }
 
+#ifdef VICE_RENDERER_TEST
+static void opengl_test_fixture(video_canvas_t *canvas)
+{
+    context_t *live = canvas->renderer_context;
+    context_t context = *live;
+    video_canvas_t fixture_canvas = *canvas;
+    video_render_config_t config = *canvas->videoconfig;
+    unsigned char pixels[] = {
+        255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 64,
+        11, 22, 33, 0, 44, 55, 66, 200, 77, 88, 99, 255
+    };
+    unsigned char actual[sizeof(pixels)];
+    GLuint framebuffer, output;
+    backbuffer_t buffer = {0};
+    fixture_canvas.renderer_context = &context;
+    fixture_canvas.videoconfig = &config;
+    config.glfilter = VIDEO_GLFILTER_NEAREST;
+    config.rotate = config.flipx = config.flipy = 0;
+    context.native_view_width = 3;
+    context.native_view_height = 2;
+    context.current_interlace_field = 0;
+    buffer.width = 3;
+    buffer.height = 2;
+    buffer.pixel_data = pixels;
+    glGenTextures(1, &context.current_frame_texture);
+    update_frame_textures(&context, &buffer);
+    glGenTextures(1, &output);
+    glBindTexture(GL_TEXTURE_2D, output);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 3, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, output, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) archdep_vice_exit(1);
+    glViewport(0, 0, 3, 2);
+    modern_render(&fixture_canvas, 1, 1);
+    glReadPixels(0, 0, 3, 2, GL_RGBA, GL_UNSIGNED_BYTE, actual);
+    if (memcmp(actual, pixels + 12, 12) != 0 || memcmp(actual + 12, pixels, 12) != 0) {
+        log_error(LOG_DEFAULT, "OpenGL fixture: RGBA pixel mismatch");
+        archdep_vice_exit(1);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &framebuffer);
+    glDeleteTextures(1, &output);
+    glDeleteTextures(1, &context.current_frame_texture);
+    glViewport(0, 0, live->gl_backing_layer_width, live->gl_backing_layer_height);
+    log_message(LOG_DEFAULT, "OpenGL fixture: exact RGBA pixels passed");
+}
+#endif
+
 static void render(void *job_data, void *pool_data)
 {
     render_job_t job = (render_job_t)vice_ptr_to_int(job_data);
@@ -778,6 +827,13 @@ static void render(void *job_data, void *pool_data)
 
     if (job == render_thread_init) {
         archdep_thread_init();
+#ifdef VICE_RENDERER_TEST
+        if (getenv("VICE_RENDERER_FIXTURE")) {
+            vice_opengl_renderer_make_current(context);
+            opengl_test_fixture(canvas);
+            vice_opengl_renderer_clear_current(context);
+        }
+#endif
 #ifdef OPENGL_PACING
         opengl_pacing_thread_init();
 #endif
@@ -828,7 +884,10 @@ static void render(void *job_data, void *pool_data)
      * monitor, resizing) are shown at once and don't touch the pacing.
      */
     if (backbuffer && canvas->videoconfig->vsync && !vsync_get_warp_mode()) {
-        present_at_ms = opengl_pacing_schedule(&context->pacing, completed_ms, queued);
+        double refresh = vsync_get_refresh_frequency();
+        present_at_ms = opengl_pacing_schedule(&context->pacing, completed_ms, queued,
+            opengl_pacing_now_ms(), refresh > 1.0 ? 1000.0 / refresh : 20.0,
+            RENDER_QUEUE_MAX_BACKBUFFERS);
         if (opengl_pacing_should_double(&context->pacing)) {
             repeat_at_ms = present_at_ms + context->pacing.period_ms * 0.5;
         }
@@ -921,7 +980,8 @@ draw_frame:
         /* Frame pacing: draw it completely, then show it on the steady clock */
         glFinish();
         if (!showing_repeat) {
-            opengl_pacing_ready(&context->pacing);
+            opengl_pacing_ready(&context->pacing, context->pacing.planned_ms, completed_ms,
+                opengl_pacing_now_ms() - context->pacing.dequeued_ms);
         }
         opengl_pacing_wait_until(present_at_ms);
     }

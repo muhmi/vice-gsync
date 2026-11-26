@@ -1,0 +1,35 @@
+--- DirectX
++++ OpenGL
+@@ -10,6 +10,4 @@
+ PACING_DOUBLE_MIN_RATIO=2.2
+ schedule:
+-refresh=vsync_get_refresh_frequency();
+-nominal=refresh>1.0?1000.0/refresh:20.0;
+ if(pacing->measured_ms<=0.0){
+ pacing->measured_ms=nominal;
+@@ -46,5 +44,5 @@
+ }
+ planned=pacing->next_ms;
+-pacing->dequeued_ms=now_ms();
++pacing->dequeued_ms=now_ms;
+ slack=planned-completed_ms;
+ target=planned;
+@@ -60,7 +58,7 @@
+ }
+ pacing->planned_ms=planned;
+-if(queued+1>=RENDER_QUEUE_MAX_BACKBUFFERS){
+-if(target>now_ms()){
+-target=now_ms();
++if(queued+1>=capacity){
++if(target>now_ms){
++target=now_ms;
+ }
+ }
+@@ -104,6 +102,5 @@
+ return;
+ }
+-draw_ms=now_ms()-pacing->dequeued_ms;
+-slack=pacing->planned_ms-(pacing->last_completed_ms+draw_ms);
++slack=planned_ms-(completed_ms+draw_ms);
+ if(slack<0.0&&pacing->adjust_ms<PACING_MARGIN_MS-slack){
+ pacing->adjust_ms=PACING_MARGIN_MS-slack;

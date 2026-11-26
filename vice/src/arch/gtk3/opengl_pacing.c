@@ -28,7 +28,10 @@
  *
  */
 
+#ifndef OPENGL_PACING_STANDALONE
 #include "vice.h"
+#include "log.h"
+#endif
 
 #include <errno.h>
 #include <math.h>
@@ -38,13 +41,9 @@
 #ifdef LINUX_COMPILE
 #include <sys/prctl.h>
 #endif
-#ifdef MACOS_COMPILE
+#if defined(MACOS_COMPILE) || defined(__APPLE__)
 #include <mach/mach_time.h>
 #endif
-
-#include "log.h"
-#include "render_queue.h"
-#include "vsync.h"
 
 #include "opengl_pacing.h"
 
@@ -100,7 +99,7 @@ double opengl_pacing_now_ms(void)
 {
     struct timespec now;
 
-#ifdef MACOS_COMPILE
+#if defined(MACOS_COMPILE) || defined(__APPLE__)
     clock_gettime(CLOCK_UPTIME_RAW, &now);
 #else
     clock_gettime(CLOCK_MONOTONIC, &now);
@@ -148,7 +147,7 @@ void opengl_pacing_wait_until(double target_ms)
         return;
     }
 
-#ifdef MACOS_COMPILE
+#if defined(MACOS_COMPILE) || defined(__APPLE__)
     {
         /* A real-time thread sleeps on mach_wait_until(), which is precise
          * enough without spinning, and must not spin.
@@ -195,10 +194,12 @@ bool opengl_pacing_should_double(opengl_pacing_t *pacing)
 
     if (hz != pacing->logged_display_hz) {
         pacing->logged_display_hz = hz;
+#ifndef OPENGL_PACING_STANDALONE
         if (hz > 1) {
             log_message(LOG_DEFAULT, "OpenGL: display refresh %d Hz, frame pacing presents each frame %s",
                         hz, twice ? "twice" : "once");
         }
+#endif
     }
 
     return twice;
@@ -229,10 +230,9 @@ bool opengl_pacing_should_double(opengl_pacing_t *pacing)
  *
  * \return  time to present the frame at (ms)
  */
-double opengl_pacing_schedule(opengl_pacing_t *pacing, double completed_ms, unsigned int queued)
+double opengl_pacing_schedule(opengl_pacing_t *pacing, double completed_ms, unsigned int queued,
+                             double now_ms, double nominal, unsigned int capacity)
 {
-    double refresh = vsync_get_refresh_frequency();
-    double nominal = refresh > 1.0 ? 1000.0 / refresh : 20.0;
     double planned;
     double target;
     double slack;
@@ -276,7 +276,7 @@ double opengl_pacing_schedule(opengl_pacing_t *pacing, double completed_ms, unsi
     }
 
     planned = pacing->next_ms;
-    pacing->dequeued_ms = opengl_pacing_now_ms();
+    pacing->dequeued_ms = now_ms;
     slack = planned - completed_ms;
     target = planned;
 
@@ -294,10 +294,10 @@ double opengl_pacing_schedule(opengl_pacing_t *pacing, double completed_ms, unsi
     }
     pacing->planned_ms = planned;
 
-    if (queued + 1 >= RENDER_QUEUE_MAX_BACKBUFFERS) {
+    if (queued + 1 >= capacity) {
         /* Queue about to overflow (emulator ran ahead): show it now, or frames get dropped */
-        if (target > opengl_pacing_now_ms()) {
-            target = opengl_pacing_now_ms();
+        if (target > now_ms) {
+            target = now_ms;
         }
     } else if (queued >= 2 && pacing->adjust_ms > -pacing->period_ms * 0.5) {
         /* More latency than needed: trim it, faster than usual but still gradually */
@@ -358,9 +358,9 @@ double opengl_pacing_schedule(opengl_pacing_t *pacing, double completed_ms, unsi
  *
  * \param[in,out]   pacing  pacing state
  */
-void opengl_pacing_ready(opengl_pacing_t *pacing)
+void opengl_pacing_ready(opengl_pacing_t *pacing, double planned_ms,
+                         double completed_ms, double draw_ms)
 {
-    double draw_ms;
     double slack;
 
     if (pacing->frames < PACING_WARMUP_FRAMES) {
@@ -368,8 +368,7 @@ void opengl_pacing_ready(opengl_pacing_t *pacing)
     }
 
     /* as if the frame had arrived that much later: when it was finished plus how long drawing it took */
-    draw_ms = opengl_pacing_now_ms() - pacing->dequeued_ms;
-    slack = pacing->planned_ms - (pacing->last_completed_ms + draw_ms);
+    slack = planned_ms - (completed_ms + draw_ms);
 
     if (slack < 0.0 && pacing->adjust_ms < PACING_MARGIN_MS - slack) {
         pacing->adjust_ms = PACING_MARGIN_MS - slack;

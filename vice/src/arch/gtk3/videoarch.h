@@ -45,13 +45,13 @@
  *
  * Currently OpenGL and DirectX map to the same integer value since that's how
  * our current 'GtkBackend' resource works: 0 = Cario (SW), 1 = HW (OS-dependent).
- * The Metal and Vulkan enums are added for future renderers, should we add them.
+ * Metal is selected on macOS; Vulkan is reserved.
  */
 enum {
     VICE_RENDER_BACKEND_CAIRO = 0,      /**< Cairo (software) rendering */
     VICE_RENDER_BACKEND_OPENGL = 1,     /**< OpenGL rendering (unix, mac) */
     VICE_RENDER_BACKEND_DIRECTX = 1,    /**< DirectX rendering (windows) */
-    VICE_RENDER_BACKEND_METAL = 2,      /**< Metal rendering (unsupported) */
+    VICE_RENDER_BACKEND_METAL = 2,      /**< Metal rendering (macOS) */
     VICE_RENDER_BACKEND_VULKAN = 3      /**< Vulkan rendering (unsupported) */
 };
 
