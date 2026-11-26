@@ -1,10 +1,11 @@
 /** \file   opengl_pacing.c
- * \brief   Frame pacing for the OpenGL renderer on X11 (Linux, BSD)
+ * \brief   Frame pacing for the OpenGL renderer on X11 (Linux, BSD) and macOS
  *
  * With VSync on, presents follow a steady clock at the emulated frame rate
  * instead of the bursty, audio-driven frame delivery of the emulator. This is
  * the same method as the Windows DirectX renderer uses (see
- * directx_renderer_impl.cc), with POSIX timing.
+ * directx_renderer_impl.cc), with POSIX timing, or Mach timing on macOS
+ * (configure --enable-macos-pacing).
  */
 
 /*
@@ -37,6 +38,9 @@
 #include <time.h>
 #ifdef LINUX_COMPILE
 #include <sys/prctl.h>
+#endif
+#ifdef MACOS_COMPILE
+#include <mach/mach_time.h>
 #endif
 
 #include "log.h"
@@ -87,12 +91,21 @@
 #define PACING_SPIN_MS              0.5
 
 
-/** \brief Current time of the pacing clock (CLOCK_MONOTONIC, ms) */
+/**
+ * \brief Current time of the pacing clock (ms)
+ *
+ * On macOS CLOCK_UPTIME_RAW, the clock of mach_absolute_time() that
+ * mach_wait_until() sleeps on. Ref: man 3 clock_gettime (macOS)
+ */
 double opengl_pacing_now_ms(void)
 {
     struct timespec now;
 
+#ifdef MACOS_COMPILE
+    clock_gettime(CLOCK_UPTIME_RAW, &now);
+#else
     clock_gettime(CLOCK_MONOTONIC, &now);
+#endif
     return (double)now.tv_sec * 1000.0 + (double)now.tv_nsec / 1000000.0;
 }
 
@@ -136,6 +149,21 @@ void opengl_pacing_wait_until(double target_ms)
         return;
     }
 
+#ifdef MACOS_COMPILE
+    {
+        /* A real-time thread sleeps on mach_wait_until(), which is precise
+         * enough without spinning, and must not spin.
+         * Ref: https://developer.apple.com/library/archive/technotes/tn2169/_index.html
+         */
+        static mach_timebase_info_data_t timebase;
+
+        if (timebase.denom == 0) {
+            mach_timebase_info(&timebase);
+        }
+        mach_wait_until(mach_absolute_time()
+                        + (uint64_t)(remaining * 1000000.0 * timebase.denom / timebase.numer));
+    }
+#else
     if (remaining > PACING_SPIN_MS) {
         double wake_ms = target_ms - PACING_SPIN_MS;
         struct timespec wake;
@@ -156,6 +184,7 @@ void opengl_pacing_wait_until(double target_ms)
     while (opengl_pacing_now_ms() < target_ms) {
         sched_yield();
     }
+#endif
 }
 
 

@@ -131,11 +131,11 @@ endif
 if WINDOWS_COMPILE
 libarch_a_SOURCES += directx_renderer.c directx_renderer_impl.cc
 else
-libarch_a_SOURCES += opengl_renderer.c
+libarch_a_SOURCES += opengl_renderer.c opengl_pacing.c opengl_present_stats.c
 if MACOS_COMPILE
 libarch_a_SOURCES += opengl_renderer_macos.m
 else
-libarch_a_SOURCES += opengl_renderer_unix.c opengl_pacing.c
+libarch_a_SOURCES += opengl_renderer_unix.c
 endif
 endif
 
@@ -177,6 +177,8 @@ EXTRA_DIST = \
 	mousedrv.h \
 	opengl_renderer.h \
 	opengl_pacing.h \
+	opengl_present_stats.h \
+	present_stats.py \
 	render_queue.h \
 	render_thread.h \
 	ui.h \

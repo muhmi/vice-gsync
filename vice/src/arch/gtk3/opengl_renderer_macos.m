@@ -140,6 +140,19 @@ void vice_opengl_renderer_clear_current(vice_opengl_renderer_context_t *context)
     [NSOpenGLContext clearCurrentContext];
 }
 
+#ifdef OPENGL_PACING
+/** \brief Highest refresh rate of the screen showing the view (Hz), 0 = unknown; main thread only */
+int vice_opengl_renderer_get_display_hz(vice_opengl_renderer_context_t *context)
+{
+    ViceOpenGLView *opengl_view = context->native_view;
+
+    if (@available(macOS 12.0, *)) {
+        return (int)[[[opengl_view window] screen] maximumFramesPerSecond];
+    }
+    return 0;
+}
+#endif
+
 /**/
 
 static NSRect getLayout(NSView *window_nsview, vice_opengl_renderer_context_t *context)

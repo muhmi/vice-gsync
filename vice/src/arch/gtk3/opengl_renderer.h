@@ -34,8 +34,15 @@
 #ifndef MACOS_COMPILE
 #include <X11/Xlib.h>
 #include <GL/glxew.h>
-#include "opengl_pacing.h"
 #endif
+
+#if !defined(MACOS_COMPILE) || defined(USE_MACOS_PACING)
+/** \brief Frame pacing and frame doubling with VSync on (see opengl_pacing.c) */
+#define OPENGL_PACING
+#endif
+
+#include "opengl_pacing.h"
+#include "opengl_present_stats.h"
 
 #include <stdbool.h>
 
@@ -164,13 +171,19 @@ typedef struct vice_opengl_renderer_context_s {
     /** \brief cached value of the vsync resource to avoid setting it each frame */
     unsigned long cached_vsync_resource;
 
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
     /** \brief frame pacing with VSync on (see opengl_pacing.c) */
     opengl_pacing_t pacing;
 
     /** \brief UI frame clock ticks until the monitor refresh rate is checked again */
     int display_check;
 #endif
+
+    /** \brief present timing log (see opengl_present_stats.c) */
+    opengl_present_stats_t present_stats;
+
+    /** \brief frames dropped because the render queue was full */
+    unsigned int dropped_frames;
 
 } vice_opengl_renderer_context_t;
 
@@ -184,5 +197,8 @@ void vice_opengl_renderer_set_vsync(vice_opengl_renderer_context_t *context, boo
 void vice_opengl_renderer_render(vice_opengl_renderer_context_t *context);
 void vice_opengl_renderer_present_backbuffer(vice_opengl_renderer_context_t *context);
 void vice_opengl_renderer_clear_current(vice_opengl_renderer_context_t *context);
+#if defined(MACOS_COMPILE) && defined(OPENGL_PACING)
+int vice_opengl_renderer_get_display_hz(vice_opengl_renderer_context_t *context);
+#endif
 
 #endif /* #ifndef VICE_OPENGL_RENDERER_H */
