@@ -137,8 +137,12 @@ int main(int argc, char **argv)
                 if (shown.presentedTime > 0) {
                     if (!destroyed) {
                         [shown release];
-                        shown = [[renderer presentFrame:frame layer:layer target:0] retain];
+                        struct timespec now;
+                        clock_gettime(CLOCK_UPTIME_RAW, &now);
+                        double future = now.tv_sec * 1000.0 + now.tv_nsec / 1e6 + 200;
+                        shown = [[renderer presentFrame:frame layer:layer target:future] retain];
                         [renderer release];
+                        assert(shown.presentedTime == 0);
                         destroyed = YES;
                         return;
                     }
