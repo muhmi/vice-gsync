@@ -131,6 +131,7 @@ VICE_ARG_ENABLE_LIST(cmake,                 [  --enable-cmake          enable ge
 VICE_ARG_ENABLE_LIST(debug,                 [  --enable-debug          enable debug source options])
 VICE_ARG_ENABLE_LIST(debug-gtk3ui,          [  --enable-debug-gtk3ui   enables debugging for the GTK3 UI])
 VICE_ARG_ENABLE_LIST(debug-threads,         [  --enable-debug-threads  enable debug messages about the threading code [[default=no]]])
+VICE_ARG_ENABLE_LIST(macos-pacing,          [  --enable-macos-pacing   enable frame pacing and frame doubling in the macOS GTK3 OpenGL renderer [[default=no]]])
 VICE_ARG_ENABLE_LIST(x64,                   [  --enable-x64            enable building of the old x64 emulator [[default=no]]])
 VICE_ARG_ENABLE_LIST(x64-image,             [  --enable-x64-image      enable X64 image support [[default=no]]])
 VICE_ARG_ENABLE_LIST(optimization,          [  --disable-optimization  disable code optimization by passing -O0 [[default=no]]])
@@ -449,6 +450,7 @@ is_beos=no
 
 DEBUG_SUPPORT="no "
 DEBUG_THREADS_SUPPORT="no "
+MACOS_PACING_SUPPORT="no "
 FEATURE_CPUMEMHISTORY_SUPPORT="no "
 HAS_HIDMGR_SUPPORT="no "
 HAS_USB_JOYSTICK_SUPPORT="no "
@@ -1216,6 +1218,12 @@ AM_CONDITIONAL(HAVE_DEBUG_THREADS, test x"$enable_debug_threads" = "xyes")
 if test x"$enable_debug_threads" = x"yes"; then
   DEBUG_THREADS_SUPPORT="yes"
   AC_DEFINE(HAVE_DEBUG_THREADS,,[Enable threading debug support])
+fi
+
+dnl Frame pacing in the macOS OpenGL renderer (always on with X11)
+if test x"$enable_macos_pacing" = x"yes"; then
+  MACOS_PACING_SUPPORT="yes"
+  AC_DEFINE(USE_MACOS_PACING,,[Enable frame pacing in the macOS OpenGL renderer])
 fi
 
 
@@ -3926,6 +3934,7 @@ echo "----"
 echo "65xx CPU history support      : $FEATURE_CPUMEMHISTORY_SUPPORT (--enable/disable-cpuhistory)"
 echo "Debug support                 : $DEBUG_SUPPORT (--enable/disable-debug)"
 echo "Threading debug support       : $DEBUG_THREADS_SUPPORT (--enable/disable-debug-threads"
+echo "macOS OpenGL frame pacing     : $MACOS_PACING_SUPPORT (--enable/disable-macos-pacing)"
 echo "Build old x64 emulator        : $X64_INCLUDED (--enable/--disable-x64)"
 echo "Install XDG .desktop files    : $USE_DESKTOP_FILES"
 echo "icotool for Windows found     : $ICOTOOL"

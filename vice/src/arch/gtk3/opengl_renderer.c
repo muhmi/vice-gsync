@@ -131,9 +131,10 @@ static void vice_opengl_initialise_canvas(video_canvas_t *canvas)
     /* First initialise the context_t that we'll need everywhere */
     context = lib_calloc(1, sizeof(context_t));
     context->cached_vsync_resource = -1;
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
     opengl_pacing_init(&context->pacing);
 #endif
+    opengl_present_stats_init(&context->present_stats);
 
     context->canvas_lock_ptr = &canvas->lock;
     pthread_mutex_init(&context->render_lock, NULL);
@@ -360,6 +361,7 @@ static void vice_opengl_refresh_rect(video_canvas_t *canvas,
     backbuffer = render_queue_get_from_pool(context->render_queue, pixel_data_size_bytes);
 
     if (!backbuffer) {
+        context->dropped_frames++;
         CANVAS_UNLOCK();
         return;
     }
@@ -373,9 +375,7 @@ static void vice_opengl_refresh_rect(video_canvas_t *canvas,
     CANVAS_UNLOCK();
 
     video_canvas_render(canvas, backbuffer->pixel_data, w, h, xs, ys, xi, yi, backbuffer->width * 4);
-#ifndef MACOS_COMPILE
     backbuffer->completed_time_ms = opengl_pacing_now_ms();
-#endif
 
     CANVAS_LOCK();
     if (context->render_thread) {
@@ -489,14 +489,17 @@ static void vice_opengl_on_ui_frame_clock(GdkFrameClock *clock, video_canvas_t *
         render_thread_push_job(context->render_thread, render_thread_render);
     }
 
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
     /*
      * Refresh rate of the monitor showing the window, for frame pacing. GDK
-     * may only be used on this thread, so the render thread reads the value
-     * stored here. Checked now and then, the window may move to another
-     * monitor or the mode may change.
+     * (and AppKit) may only be used on this thread, so the render thread
+     * reads the value stored here. Checked now and then, the window may move
+     * to another monitor or the mode may change.
      */
     if (--context->display_check <= 0) {
+#ifdef MACOS_COMPILE
+        int hz = vice_opengl_renderer_get_display_hz(context);
+#else
         GdkWindow *window = gtk_widget_get_window(canvas->event_box);
         int hz = 0;
 
@@ -506,6 +509,7 @@ static void vice_opengl_on_ui_frame_clock(GdkFrameClock *clock, video_canvas_t *
                 hz = (gdk_monitor_get_refresh_rate(monitor) + 500) / 1000; /* mHz */
             }
         }
+#endif
         context->pacing.display_hz = hz;
         context->display_check = 60;
     }
@@ -762,15 +766,19 @@ static void render(void *job_data, void *pool_data)
     int vsync = 1;
     float scale_x = 1.0f;
     float scale_y = 1.0f;
-#ifndef MACOS_COMPILE
     double present_at_ms = 0.0;
-    double repeat_at_ms = 0.0;
     bool showing_repeat = false;
+    double completed_ms = 0.0;
+    unsigned int queued = 0;
+    unsigned int dropped;
+    double ready_ms;
+#ifdef OPENGL_PACING
+    double repeat_at_ms = 0.0;
 #endif
 
     if (job == render_thread_init) {
         archdep_thread_init();
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
         opengl_pacing_thread_init();
 #endif
 
@@ -794,6 +802,11 @@ static void render(void *job_data, void *pool_data)
 
     CANVAS_LOCK();
     backbuffer = render_queue_dequeue_for_display(context->render_queue);
+    dropped = context->dropped_frames;
+    if (backbuffer) {
+        completed_ms = backbuffer->completed_time_ms;
+        queued = render_queue_length(context->render_queue);
+    }
 
     if (context->render_skip) {
         if (backbuffer) {
@@ -807,7 +820,7 @@ static void render(void *job_data, void *pool_data)
 
     vice_opengl_renderer_make_current(context);
 
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
     /*
      * Frame pacing (VSync on): each new emulated frame is presented on a
      * steady clock instead of whenever the emulator, driven by the audio
@@ -815,9 +828,7 @@ static void render(void *job_data, void *pool_data)
      * monitor, resizing) are shown at once and don't touch the pacing.
      */
     if (backbuffer && canvas->videoconfig->vsync && !vsync_get_warp_mode()) {
-        present_at_ms = opengl_pacing_schedule(&context->pacing,
-                                               backbuffer->completed_time_ms,
-                                               render_queue_length(context->render_queue));
+        present_at_ms = opengl_pacing_schedule(&context->pacing, completed_ms, queued);
         if (opengl_pacing_should_double(&context->pacing)) {
             repeat_at_ms = present_at_ms + context->pacing.period_ms * 0.5;
         }
@@ -891,7 +902,7 @@ static void render(void *job_data, void *pool_data)
         context->cached_vsync_resource = vsync;
     }
 
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
 draw_frame:
 #endif
     /* Begin with a cleared framebuffer */
@@ -905,7 +916,7 @@ draw_frame:
         modern_render(canvas, scale_x, scale_y);
     }
 
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
     if (present_at_ms > 0.0) {
         /* Frame pacing: draw it completely, then show it on the steady clock */
         glFinish();
@@ -916,10 +927,18 @@ draw_frame:
     }
 #endif
 
+    ready_ms = context->present_stats.file ? opengl_pacing_now_ms() : 0.0;
     vice_opengl_renderer_present_backbuffer(context);
     glFinish();
+    if (context->present_stats.file) {
+        opengl_present_stats_record(&context->present_stats,
+                                    showing_repeat ? OPENGL_PRESENT_REPEAT
+                                    : backbuffer ? OPENGL_PRESENT_NEW : OPENGL_PRESENT_REDRAW,
+                                    completed_ms, present_at_ms, ready_ms, opengl_pacing_now_ms(),
+                                    queued, dropped);
+    }
 
-#ifndef MACOS_COMPILE
+#ifdef OPENGL_PACING
     /*
      * Show the same frame again half a frame later on a fast display (keeps a
      * VRR display well above its minimum refresh rate), unless running late

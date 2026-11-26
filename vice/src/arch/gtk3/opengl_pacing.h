@@ -1,5 +1,5 @@
 /** \file   opengl_pacing.h
- * \brief   Frame pacing for the OpenGL renderer on X11 (Linux, BSD)
+ * \brief   Frame pacing for the OpenGL renderer on X11 (Linux, BSD) and macOS
  */
 
 /*
